@@ -14,6 +14,7 @@ endif ()
 
 file(GLOB_RECURSE SRC_FILES INC_FILES src/*.c include/*.h)
 add_library(StackManager SHARED ${SRC_FILES} ${INC_FILES})
+target_include_directories(StackManager PUBLIC include)
 
 add_subdirectory(clitools)
 
