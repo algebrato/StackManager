@@ -21,15 +21,6 @@ void initialize_register_stack() {
     register_stack_pointer = REGISTER_STACK_SIZE - 1;
 }
 
-// // Function to initialize the program stack with random values
-// void initialize_program_stack() {
-//     srand(time(NULL));
-//     for (int i = 0; i < PROGRAM_STACK_SIZE; i++) {
-//         program_stack[i] = rand();
-//     }
-//     program_stack_pointer = PROGRAM_STACK_SIZE - 1;
-// }
-
 // Function to print the register stack
 void print_register_stack() {
     for (int i = 0; i < REGISTER_STACK_SIZE; i++) {
@@ -59,17 +50,12 @@ void save_registers_to_stack() {
 
 void restore_registers_from_stack() {
     if (program_stack_pointer - REGISTER_STACK_SIZE < -1) {
-        printf("Error: Program stack underflow\n");
+        printf("Error: invalid program_stack_pointer value\n");
         return;
     }
     for (int i = REGISTER_STACK_SIZE - 1; i >= 0; i--) {
         register_stack[i] = program_stack[program_stack_pointer--];
     }
-}
-
-// Function ciao that takes two integer parameters
-void ciao(int a, int b) {
-    printf("ciao function called with parameters: %d, %d\n", a, b);
 }
 
 // Function add that takes two double parameters and returns their sum
@@ -92,7 +78,6 @@ char to_upper(char c) {
 
 // Define the function map
 FunctionInfo function_map[] = {
-    {"ciao", (void (*)())ciao, {"int", "int"}, {"a", "b"}, 0},
     {"add", (void (*)())add, {"double", "double"}, {"x", "y"}, sizeof(double)},
     {"multiply", (void (*)())multiply, {"int", "int"}, {"x", "y"}, sizeof(int)},
     {"to_upper", (void (*)())to_upper, {"char"}, {"c"}, sizeof(char)}
@@ -101,7 +86,9 @@ FunctionInfo function_map[] = {
 void invoke_function(const char *name) {
     for (int i = 0; i < sizeof(function_map) / sizeof(FunctionInfo); i++) {
         if (strcmp(function_map[i].name, name) == 0) {
+            print_register_stack();
             save_registers_to_stack(); // Save registers before invoking the function
+            print_program_stack();
 
             void *params[2] = {0};
             for (int j = 0; j < 2 && function_map[i].param_types[j] != NULL; j++) {
@@ -122,20 +109,27 @@ void invoke_function(const char *name) {
 
             void *result = NULL;
             if (function_map[i].return_size == 0) {
+                register_stack[register_stack_pointer-1] = *(int *)params[0] + *(int *)params[1];
                 ((void (*)(int, int))function_map[i].func_ptr)(*(int *)params[0], *(int *)params[1]);
+                
             } else if (function_map[i].return_size == sizeof(double)) {
                 result = malloc(sizeof(double));
+                register_stack[register_stack_pointer-1] = *(double *)params[0] + *(double *)params[1];
                 *(double *)result = ((double (*)(double, double))function_map[i].func_ptr)(*(double *)params[0], *(double *)params[1]);
                 printf("Result: %f\n", *(double *)result);
             } else if (function_map[i].return_size == sizeof(int)) {
                 result = malloc(sizeof(int));
+                register_stack[register_stack_pointer-1] = *(int *)params[0] + *(int *)params[1];
                 *(int *)result = ((int (*)(int, int))function_map[i].func_ptr)(*(int *)params[0], *(int *)params[1]);
                 printf("Result: %d\n", *(int *)result);
             } else if (function_map[i].return_size == sizeof(char)) {
                 result = malloc(sizeof(char));
+                register_stack[register_stack_pointer-1] = *(char *)params[0];
                 *(char *)result = ((char (*)(char))function_map[i].func_ptr)(*(char *)params[0]);
                 printf("Result: %c\n", *(char *)result);
             }
+
+            print_register_stack();
 
             for (int j = 0; j < 2; j++) {
                 if (params[j] != NULL) {
@@ -145,8 +139,8 @@ void invoke_function(const char *name) {
             if (result != NULL) {
                 free(result);
             }
-
-            restore_registers_from_stack(); // Restore registers after invoking the function
+            restore_registers_from_stack();
+            print_register_stack();
             return;
         }
     }
