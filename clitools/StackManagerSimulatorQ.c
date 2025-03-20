@@ -22,20 +22,20 @@ typedef union {
     } parts;
 } DoubleSplitter;
 
-// Function to combine two registers into a double
+// Function to combine two registers into a double using bitwise operations
 double combine_double(Register high_reg, Register low_reg) {
-    DoubleSplitter splitter;
-    splitter.parts.high_bits = high_reg.u;
-    splitter.parts.low_bits = low_reg.u;
-    return splitter.d;
+    unsigned long long combined = ((unsigned long long)high_reg.u << 32) | (unsigned int)low_reg.u;
+    double result;
+    memcpy(&result, &combined, sizeof(double));
+    return result;
 }
 
-// Function to split a double into two registers
+// Function to split a double into two registers using bitwise operations
 void split_double(double value, Register* high_reg, Register* low_reg) {
-    DoubleSplitter splitter;
-    splitter.d = value;
-    high_reg->u = splitter.parts.high_bits;
-    low_reg->u = splitter.parts.low_bits;
+    unsigned long long combined;
+    memcpy(&combined, &value, sizeof(double));
+    high_reg->u = (unsigned int)(combined >> 32);
+    low_reg->u = (unsigned int)(combined & 0xFFFFFFFF);
 }
 // Define parameter types
 typedef enum {
@@ -64,26 +64,31 @@ typedef struct {
 Register stack[STACK_SIZE];
 int stack_pointer = 0;
 
-// Register bank
+// Register bank [https://shivamrai24.medium.com/brief-about-cpu-register-1b532926e684]
 #define NUM_REGISTERS 8
-Register registers[NUM_REGISTERS];
+Register registers[NUM_REGISTERS];  // Register bank
+int register_pointer = 0;          // Points to next available register position
 
-void initialize_registers() {
-    // Seed the random number generator with current time
-    srand((unsigned int)time(NULL));
-
-    printf("\n=== Initializing Registers with Random Values ===\n");
-
-    for (int i = 0; i < NUM_REGISTERS; i++) {
-        // Generate a random 32-bit value
-        registers[i].i = rand();
-
-        printf("Register %d initialized:\n", i);
-        printf("  As Integer: %d\n", registers[i].i);
-        printf("  As Float: %f\n", registers[i].f);
-        printf("  As Char: %c\n", registers[i].c);
+// Add a register
+void add_register(Register value) {
+    if (register_pointer < NUM_REGISTERS) {
+        registers[register_pointer++] = value;
+        printf("Added register at position %d\n", register_pointer - 1);
+    } else {
+        fprintf(stderr, "Register bank is full\n");
     }
-    printf("\n");
+}
+
+// Remove a register
+Register remove_register() {
+    Register empty = {0};
+    if (register_pointer > 0) {
+        Register value = registers[--register_pointer];
+        printf("Removed register from position %d\n", register_pointer);
+        return value;
+    }
+    fprintf(stderr, "Register bank is empty\n");
+    return empty;
 }
 
 // Function to print the type of data stored in a Register
@@ -103,18 +108,42 @@ void print_register_value(Register reg, ParamType type) {
     }
 }
 
+// Print register bank state
 void print_registers() {
-    printf("\nRegisters State:\n");
-    for (int i = 0; i < NUM_REGISTERS; i += 2) {
-        if (i + 1 < NUM_REGISTERS) {
-            double d_val = combine_double(registers[i], registers[i + 1]);
-            printf("R%d-R%d: %f (double) | ", i, i + 1, d_val);
+    printf("\nRegister Bank State:\n");
+    if (register_pointer == 0) {
+        printf("Register bank is empty\n");
+    } else {
+        for (int i = 0; i < register_pointer; i++) {
+            printf("Register[%d]: %d (int) | %f (float) | %c (char)\n",
+                i, registers[i].i, registers[i].f, registers[i].c);
         }
-        printf("R%d: %d (int) | %f (float) | %c (char)\n",
-            i, registers[i].i, registers[i].f, registers[i].c);
     }
     printf("\n");
 }
+
+// Initialize registers
+void initialize_registers() {
+    register_pointer = 0;  // Reset pointer first
+    
+    // Add some initial values
+    for (int i = 0; i < NUM_REGISTERS; i++) {
+        Register reg = {
+            .c = 'A' + i
+        };
+        add_register(reg);
+    }
+}
+
+// Clear all registers
+void clear_registers() {
+    register_pointer = 0;
+    printf("All registers cleared\n");
+}
+
+/******************************************************************** */
+
+Register registers[NUM_REGISTERS];
 
 void print_stack() {
     printf("\nStack State (SP = %d):\n", stack_pointer);
@@ -160,16 +189,55 @@ Register pop() {
 
 // Function implementations
 // Modified add function for doubles using two registers
-double add_double(double a, double b) {
-    return a + b;
+double add_double() {
+
+    Register param1_high = pop();
+    Register param1_low = pop();
+    Register param2_high = pop();
+    Register param2_low = pop();
+
+    unsigned long long combined1 = ((unsigned long long)param1_high.u << 32) | (unsigned int)param1_low.u;
+    unsigned long long combined2 = ((unsigned long long)param2_high.u << 32) | (unsigned int)param2_high.u;
+
+    unsigned int carry;
+    while (combined2 != 0) {
+        // Calcola il carry
+        carry = combined1 & combined2;
+
+        // Esegui la somma senza il carry
+        combined1 = combined1 ^ combined2;
+
+        // Sposta il carry a sinistra di 1 bit
+        combined2 = carry << 1;
+    }
+
+    double result;
+    memcpy(&result, &combined1, sizeof(double));
+    return result;
 }
 
-int multiply(int a, int b) {
-    return a * b;
+int multiply() {
+    Register a = pop();
+    Register b = pop();
+
+
+    int result = 0;
+    while (b.i != 0) {
+        // If the least significant bit of b is set, add a to the result
+        if (b.i & 1) {
+            result += a.i;
+        }
+        // Shift a left by 1 (equivalent to multiplying by 2)
+        a.i <<= 1;
+        // Shift b right by 1 (equivalent to dividing by 2)
+        b.i >>= 1;
+    }
+    return result;
 }
 
-char to_upper(char c) {
-    return (c >= 'a' && c <= 'z') ? c - 32 : c;
+char to_upper() {
+    Register c = pop();
+    return (c.c >= 'a' && c.c <= 'z') ? c.c - 32 : c.c;
 }
 
 // Initialize function map
@@ -210,61 +278,9 @@ void execute_function(const char* func_name, FunctionMap* map) {
     for (int i = 0; i < 3; i++) {
         if (strcmp(map[i].name, func_name) == 0) {
             Register result;
+            double (*func_ptr)() = map[i].func_ptr;
+            double result_d = func_ptr();
 
-            if (map[i].signature.param_count == 2) {
-                Register param2 = pop();
-                Register param1 = pop();
-
-                printf("Parameters:\n");
-                printf("  Param 1: ");
-                print_register_value(param1, map[i].signature.param_types[0]);
-                printf("\n  Param 2: ");
-                print_register_value(param2, map[i].signature.param_types[1]);
-                printf("\n");
-
-                if (map[i].signature.param_types[0] == TYPE_DOUBLE) {
-                    Register param2_high = pop();
-                    Register param2_low = pop();
-                    Register param1_high = pop();
-                    Register param1_low = pop();
-
-                    // Reconstruct doubles from register pairs
-                    double param1 = combine_double(param1_high, param1_low);
-                    double param2 = combine_double(param2_high, param2_low);
-
-                    printf("Parameters:\n");
-                    printf("  Param 1: %f\n", param1);
-                    printf("  Param 2: %f\n", param2);
-
-                    // Execute double precision function
-                    double (*func_ptr)(double, double) = map[i].func_ptr;
-                    double result_d = func_ptr(param1, param2);
-
-                    // Split result back into two registers and push
-                    Register result_high, result_low;
-                    split_double(result_d, &result_high, &result_low);
-                    push(result_low);   // Push low bits first
-                    push(result_high);  // Then high bits
-                }
-                else if (map[i].signature.param_types[0] == TYPE_INT) {
-                    int (*func_ptr)(int, int) = map[i].func_ptr;
-                    result.i = func_ptr(param1.i, param2.i);
-                    push(result);
-                }
-            }
-            else if (map[i].signature.param_count == 1) {
-                Register param = pop();
-                printf("Parameters:\n");
-                printf("  Param 1: ");
-                print_register_value(param, map[i].signature.param_types[0]);
-                printf("\n");
-
-                if (map[i].signature.param_types[0] == TYPE_CHAR) {
-                    char (*func_ptr)(char) = map[i].func_ptr;
-                    result.c = func_ptr(param.c);
-                    push(result);
-                }
-            }
 
             printf("\nStack state after function execution:\n");
             print_stack();
@@ -274,67 +290,161 @@ void execute_function(const char* func_name, FunctionMap* map) {
     fprintf(stderr, "Function not found: %s\n", func_name);
 }
 
+void print_available_functions(FunctionMap* map) {
+    printf("\nAvailable functions:\n");
+    printf("1. add (takes two doubles)\n");
+    printf("2. multiply (takes two integers)\n");
+    printf("3. to_upper (takes one character)\n");
+    printf("0. Exit\n");
+}
+
 int main() {
-    // Initialize registers with random values
+    /*
+    Questo programma simula il comportamento delle operazioni macchina
+    svolte da una CPU a 32-bit. Crea un assemby di istruzioni, vengono tradotte
+    in binario e successivamente eseguite.
+
+    L'architettura della CPU usata nella simulazione e' una versione MOLTO
+    semplificata di un'architettua a 32-bit. Il register bank e' un array
+    di 8 registri ognuno dei quali a 32-bit. La CPU-stack e' un array di 
+    256 registri
+
+    Al posto di usare un singolo registro da 32 elementi (come suggerito nel testo)
+    viene usata un'array di registri in quanto con un singolo registro sarebbe stato 
+    impossibile rappresentare un double. Il numero 8 di registri e' scelto perche' e'
+    il numero di registri general purpose tipicamente usati in una CPU a 32-bit.
+    [ref.https://shivamrai24.medium.com/brief-about-cpu-register-1b532926e684]
+    */
+
+    /*******************************************************************************/
+
+    /*
+    Il register bank viene inizializzato in modo random. All'interno di ognuno
+    degli 8 registri viene inserito o un interno o un float o un char random.
+    La CPU Stack, all'inizio e' vuota.
+    */
     initialize_registers();
 
+    /*
+    La mappa delle funzioni e' un array di 3 elementi in cui ogni elemento
+    e rappresentato da: [nome della funzione, la sua segnatura, il suo puntatore a funzione,
+    e il tipo dei parametri e del valore di ritorno].
+    */
     FunctionMap* function_map = create_function_map();
 
+    /*
+    Considero la realizzazione iniziale dei registri come una realizzazione "speciale"
+    da voler ripristinare al termine dell'esecuzione del programma. Per questo motivo
+    salvo i valori degli otto registri sullo stack.
+    */
     printf("\n=== Saving Initial Register Values to Stack ===\n");
     // Save all register values to stack
-    for (int i = NUM_REGISTERS - 1; i >= 0; i--) {  // Push in reverse order for easier restoration
+    for (int i = NUM_REGISTERS - 1; i >= 0; i--) {
         push(registers[i]);
         printf("Saved Register %d to stack\n", i);
     }
 
-    printf("\nInitial state before operations:\n");
+    clear_registers();
     print_registers();
     print_stack();
 
-    // Test add function with doubles
-    printf("\nTesting ADD function with doubles:\n");
-    double value1 = 3.14159265359;
-    double value2 = 2.71828182846;
+    int choice;
+    do {
+        print_available_functions(function_map);
+        printf("\nEnter function number (0 to exit): ");
+        scanf("%d", &choice);
 
-    // Split first double and push to stack
-    Register value1_high, value1_low;
-    split_double(value1, &value1_high, &value1_low);
-    push(value1_low);   // Push low bits first
-    push(value1_high);  // Then high bits
+        switch(choice) {
+            case 1: { // add
+                double value1, value2;
+                printf("Enter first double value: ");
+                scanf("%lf", &value1);
+                printf("Enter second double value: ");
+                scanf("%lf", &value2);
 
-    // Split second double and push to stack
-    Register value2_high, value2_low;
-    split_double(value2, &value2_high, &value2_low);
-    push(value2_low);
-    push(value2_high);
+                // Split first double and push to stack
+                Register value1_high, value1_low;
+                Register value2_high, value2_low;
 
-    execute_function("add", function_map);
+                split_double(value1, &value1_high, &value1_low);
+                add_register(value1_high);
+                add_register(value1_low);
 
-    // Pop result (comes in two parts)
-    Register result_high = pop();
-    Register result_low = pop();
-    double result = combine_double(result_high, result_low);
-    printf("Double Add result: %.10f\n", result);
+                // Split second double and push to stack
+                
+                split_double(value2, &value2_high, &value2_low);
+                add_register(value2_high);
+                add_register(value2_low);
 
-    // Test multiply function
-    printf("\nTesting MULTIPLY function:\n");
-    Register a = { .i = 5 };
-    Register b = { .i = 3 };
-    push(a);
-    push(b);
-    execute_function("multiply", function_map);
+                push(remove_register());  // Push low bits first
+                push(remove_register());  // Then high bits
+                push(remove_register());  // Push low bits first
+                push(remove_register());  // Then high bits
 
-    // Test to_upper function
-    printf("\nTesting TO_UPPER function:\n");
-    Register c = { .c = 'a' };
-    push(c);
-    execute_function("to_upper", function_map);
+                execute_function("add", function_map);
+
+                // Pop result (comes in two parts)
+                Register result_high = pop();
+                Register result_low = pop();
+                double result = combine_double(result_high, result_low);
+                printf("Double Add result: %.10f\n", result);
+                break;
+            }
+            case 2: { // multiply
+                int val1, val2;
+                printf("Enter first integer: ");
+                scanf("%d", &val1);
+                printf("Enter second integer: ");
+                scanf("%d", &val2);
+
+                Register a = { .i = val1 };
+                Register b = { .i = val2 };
+                push(a);
+                push(b);
+                execute_function("multiply", function_map);
+
+                Register result = pop();
+                printf("Multiply result: %d\n", result.i);
+                break;
+            }
+            case 3: { // to_upper
+                char c;
+                printf("Enter a character: ");
+                getchar(); // Clear buffer
+                scanf("%c", &c);
+
+                Register chr = { .c = c };
+                push(chr);
+                execute_function("to_upper", function_map);
+                Register result = pop();
+                printf("ToUpper result: %c\n", result.c);
+                break;
+            }
+            case 0:
+                printf("\nExiting program...\n");
+                break;
+            default:
+                printf("\nInvalid choice. Please try again.\n");
+        }
+
+        if (choice != 0) {
+            print_registers();
+            print_stack();
+        }
+
+    } while (choice != 0);
 
     printf("\n=== Restoring Initial Register Values from Stack ===\n");
     // Restore register values from stack
-    for (int i = 0; i < NUM_REGISTERS; i++) {
-        registers[i] = pop();
-        printf("Restored Register %d from stack\n", i);
+    if ((stack_pointer) == NUM_REGISTERS) {
+
+        for (int i = 0; i < NUM_REGISTERS; i++) {
+            add_register(pop());
+            printf("Restored Register %d from stack\n", i);
+        }
+    }
+    else {
+        fprintf(stderr, "Stack does not have enough values to restore registers\n");
     }
 
     printf("\nFinal state after restoration:\n");
