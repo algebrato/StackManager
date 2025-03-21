@@ -436,4 +436,3 @@ void create_stack(const char* func_name, FunctionMap* map) {
     }
     fprintf(stderr, "Function not found: %s\n", func_name);
 }
-
