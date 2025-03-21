@@ -1,0 +1,4 @@
+set(SIMULATOR_SRC StackManagerSimulator.c)
+add_executable(StackManagerSimulator ${SIMULATOR_SRC})
+target_link_libraries(StackManagerSimulator StackManager)
+target_include_directories(StackManagerSimulator PUBLIC include)
