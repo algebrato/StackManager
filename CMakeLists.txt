@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.5)
 project(StackManager LANGUAGES C)
 
 set(CMAKE_BUILD_TYPE Debug)
@@ -13,8 +13,7 @@ endif ()
 
 
 file(GLOB_RECURSE SRC_FILES INC_FILES src/*.c include/*.h)
-add_library(StackManager SHARED ${SRC_FILES} ${INC_FILES})
+add_library(StackManager STATIC ${SRC_FILES} ${INC_FILES})
+target_include_directories(StackManager PUBLIC include)
 
-add_subdirectory(clitools)
-
-
+add_subdirectory(test)
