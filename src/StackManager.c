@@ -3,15 +3,15 @@ Register stack[STACK_SIZE];
 Register registers[NUM_REGISTERS];
 int stack_pointer = 0;
 int register_pointer = 0;
-// Function to combine two registers into a double using DoubleSplitter
-double combine_double(Register high_reg, Register low_reg) {
-    DoubleSplitter splitter;
-    splitter.parts.high_bits = high_reg.i;
-    splitter.parts.low_bits = low_reg.i;
-    return splitter.d;
-}
 
-// Function to split a double into two registers
+/*
+Questo e' il modo piu' semplice che mi e' venuto in mente per dividere un double in due registri
+DoubleSplitter e' semplicemente una union di un double e di una struct che contiene due interi,
+dato che il double e i due interi condividono la stessa area di memoria (tramite union), ho la sua 
+rappresentazione in due interi, uno della parte "alta" e uno della parte "bassa".
+
+Onestamente non so come una CPU a 32-bit lo faccia realmente.
+*/
 void split_double(double value, Register* high_reg, Register* low_reg) {
     DoubleSplitter splitter;
     splitter.d = value;
@@ -19,7 +19,22 @@ void split_double(double value, Register* high_reg, Register* low_reg) {
     low_reg->i = splitter.parts.low_bits;  // No need for explicit casting
 }
 
-// Add a register
+/*
+Stesso principio dello split_double, ma mappando una struct di due interi in un double.
+*/
+double combine_double(Register high_reg, Register low_reg) {
+    DoubleSplitter splitter;
+    splitter.parts.high_bits = high_reg.i;
+    splitter.parts.low_bits = low_reg.i;
+    return splitter.d;
+}
+
+/*
+Il register bank e' un array di 8 registri, ognuno dei quali puo' contenere un intero, un float o un char.
+In questo modo, quando ho bisogno di utilizzare un registro, lo inizializzo con il valore che mi serve e lo aggiungo
+al register bank, per poi copiarlo sullo stack. In questo modo mi assicuro di utilizzare sempre un numero di registri 
+fisso in accordo con la nostra architettura a 32-bit che stiamo simulando. (In questo caso 8 registri nel register_bank)
+*/
 void add_register(Register value) {
     if (register_pointer < NUM_REGISTERS) {
         registers[register_pointer++] = value;
@@ -31,7 +46,11 @@ void add_register(Register value) {
     }
 }
 
-// Remove a register
+/*
+Stesso principio di add_register ma in senso inverso, estraggo sempre in modalita' LIFO il registro TOP per farne il
+push sullo stack. Questa chiamata non fa il push sullo stack, ma restituisce il registro estratto. 
+*/
+
 Register remove_register() {
     Register empty = {0};
     if (register_pointer > 0) {
@@ -43,7 +62,9 @@ Register remove_register() {
     return empty;
 }
 
-// Function to print the type of data stored in a Register
+/*
+Questa funzione e' stata creata per debuggare il register bank, stampa il valore di un registro in base al tipo
+*/
 void print_register_value(Register reg, ParamType type) {
     switch (type) {
     case TYPE_INT:
@@ -60,7 +81,9 @@ void print_register_value(Register reg, ParamType type) {
     }
 }
 
-// Print register bank state
+/*
+Altra funzione di debug, stampa lo stato del register bank
+*/
 void print_registers() {
     #ifdef DEBUG
     printf("\nRegister Bank State:\n");
@@ -77,7 +100,14 @@ void print_registers() {
 }
 
 
-// Initialize registers
+/*
+Inizializzazione dei registri. Passando un valore random e assegandolo a ciascun registro.
+sto effettivamente simulando una realizzazione random di 32 elementi. In questo caso, ogni registro
+del register_bank viene inizializzato con un valore random. Quindi ho 8 registri, da 32-bit ciascuno,
+inizializzato con un valore random. 
+Dato che Register e' una union, in questo caso ho deciso di assegnare il valore random alla sua rappresentazione
+integer. In funzione al tipo richiamato (reg.f, reg.i, reg.c) avro' la codifica di quel valore random in float, int o char.
+*/
 void initialize_registers() {
     register_pointer = 0;  // Reset pointer first
     // Add some initial values
@@ -90,6 +120,11 @@ void initialize_registers() {
     }
 }
 
+/*
+Dato che consideriamo la realizzazione iniziale del register bank come una realizzazione "speciale",
+questa helper function mi permette di salvare i valori dei registri sullo stack. Questa variante non 
+modifica il register_pointer, quindi se vuoi brasare il regester bank, devi chiamare clear_registers().
+*/
 void save_registersBank_on_stack()
 {
     for (int i = NUM_REGISTERS - 1; i >= 0; i--) {
@@ -100,12 +135,17 @@ void save_registersBank_on_stack()
     }
 }
 
-// Clear all registers
+/*
+clean_registers() resetta il register_pointer a 0 permettendo di sovrascrivere i valori dei registri.
+*/
 void clear_registers() {
     register_pointer = 0;
     printf("All registers cleared\n");
 }
 
+/*
+La realizzazione "speciale" iniziale del register bank viene ripristinata.
+*/
 void restore_registers()
 {
     if ((stack_pointer) == NUM_REGISTERS) {
@@ -119,7 +159,8 @@ void restore_registers()
         fprintf(stderr, "Stack does not have enough values to restore registers\n");
     }
 }
-
+/******************************************************************** */
+/*Chiamate dedicate alla gestione dello stack                         */
 /******************************************************************** */
 
 void print_stack() {
@@ -138,6 +179,10 @@ void print_stack() {
     #endif
 }
 
+/*
+Se lo stack non e' pieno, inserisce nello stack un valore di tipo Register e lo stack_pointer 
+viene incrementato
+*/
 void push(Register value) {
     #ifdef DEBUG
     printf("\n=== Executing PUSH operation ===\n");
@@ -154,26 +199,39 @@ void push(Register value) {
     }
 }
 
+/*
+Se lo stack_pointer e' maggiore di 0, estrae il valore in cima allo stack e lo stack_pointer viene decrementato
+*/
 Register pop() {
     #ifdef DEBUG
     printf("\n=== Executing POP operation ===\n");
     #endif
     Register empty = { 0 };
     if (stack_pointer > 0) {
-        Register value = stack[--stack_pointer];
+        Register reg = stack[--stack_pointer];
         #ifdef DEBUG
-        printf("Popped value: %d (int) | %f (float) | %c (char)\n", value.i, value.f, value.c);
+        printf("Popped value: %d (int) | %f (float) | %c (char)\n", reg.i, reg.f, reg.c);
         print_stack();
         #endif
-        return value;
+        return reg;
     }
+    
     fprintf(stderr, "Stack underflow\n");
+    #ifdef DEBUG
     print_stack();
+    #endif
+
     return empty;
 }
 
-// Function implementations
-// Modified add function for doubles using two registers
+/******************************************************************** */
+/*Funzioni dedicate alla gestione delle operazioni                   */
+/******************************************************************** */
+
+/*
+tutte le funzioni sono void f(void) perche' prendono i parametri dallo stack e 
+restituiscono il risultato sullo stack.
+*/
 void add_double() {
 
     // Pop the first four registers from the stack
@@ -183,17 +241,22 @@ void add_double() {
     Register param2_low = pop();
     Register param2_high = pop();
     
-
-    // Combine param1_high and param1_low to create a double d1
+    /*
+    Sicuramente queste righe sono sbagliate o comunque decisamente naive. Ho fatto l'eserizio di pensare
+    ad un double su due registri, ma una volta che ho i 4 registri (due per il par1, 
+    due per il par2) non so bene cosa succede all'interno della CPU per sommarli. Probabilmente
+    result sara' il risultato di un processo iterativo che man mano raffina le cifre decimali e 
+    poi le rappresenta su due registri. Ho provato a ragionare un po' sulla rappresentazione di un double
+    con mantissa ed esponente, ma fare poi il bitset iterativo per riempire i due registri per il result va
+    decisamente oltre le mie competenze attuali.
+    */
     double d1 = combine_double(param1_high, param1_low);
-
-    // Combine param2_high and param2_low to create a double d2
     double d2 = combine_double(param2_high, param2_low);
-
-    // Perform the addition
     double result = d1 + d2;
+    /************************************************ */
 
-    // Split the result into two registers and push them onto the stack
+    // nuovamente, split_double e' una funzione che divide un double in due registri sempre in modo 
+    // un po' naive. 
     Register result_high, result_low;
     split_double(result, &result_high, &result_low);
     push(result_high);
@@ -204,21 +267,23 @@ void add_double() {
 
 void multiply() {
 
+    /*
+    La moltipicazione e' semplice in questo caso. Dato che e' tra due interi, estraggo i due registri
+    dallo stack e faccio la moltiplicazione iterativa.
+    */
     Register a = pop();
     Register b = pop();
 
-
     int result = 0;
     while (b.i != 0) {
-        // If the least significant bit of b is set, add a to the result
         if (b.i & 1) {
             result += a.i;
         }
-        // Shift a left by 1 (equivalent to multiplying by 2)
         a.i <<= 1;
-        // Shift b right by 1 (equivalent to dividing by 2)
         b.i >>= 1;
     }
+
+    /*Inserisco il registro sullo stack*/
     Register result_reg = { .i = result };
     push(result_reg);
 
@@ -227,6 +292,9 @@ void multiply() {
 }
 
 void to_upper() {
+    /*
+    Funzione che prende un carattere minuscolo e lo trasforma in maiuscolo.
+    */
 
     Register c = pop();
     if (c.c >= 'a' && c.c <= 'z') {
@@ -237,11 +305,14 @@ void to_upper() {
     return;
 }
 
-// Initialize function map
+/******************************************************************** */
+/*Mappa per la gestione delle funzioni                                */
+/******************************************************************** */
 FunctionMap* create_function_map() {
     FunctionMap* map = malloc(sizeof(FunctionMap) * 3);
 
-    // Add function
+    // Funzione somma, nome, puntatore alla funzione, tipo e numero dei parametri e 
+    // tipo del valore di ritorno
     map[0].name = "add";
     map[0].func_ptr = add_double;
     map[0].signature.param_types[0] = TYPE_DOUBLE;
@@ -249,7 +320,7 @@ FunctionMap* create_function_map() {
     map[0].signature.param_count = 2;
     map[0].signature.return_type = TYPE_DOUBLE;
 
-    // Multiply function
+
     map[1].name = "multiply";
     map[1].func_ptr = multiply;
     map[1].signature.param_types[0] = TYPE_INT;
@@ -257,7 +328,6 @@ FunctionMap* create_function_map() {
     map[1].signature.param_count = 2;
     map[1].signature.return_type = TYPE_INT;
 
-    // ToUpper function
     map[2].name = "to_upper";
     map[2].func_ptr = to_upper;
     map[2].signature.param_types[0] = TYPE_CHAR;
@@ -269,6 +339,13 @@ FunctionMap* create_function_map() {
 
 void run_stack(FunctionMap *map) {
     do{
+        /*
+        Questa funzione cicla lo stack. Nella prima estrazione si aspetta l'identificativo di una funzione.
+        Se l'identificativo e' 1, 2 o 3, viene eseguita la funzione corrispondente. Dalla mappa viene estratto
+        il tipe del valore di ritorno. Viene eseguita la funzione, si fa l'allocazione di result per il tipo di ritorno, 
+        e a result viene assegnato il registro in cima allo stack (che la funzione avra' riempito con il risultato).
+        Al termine si fa un print a schermo.
+        */
         void *result = NULL;
         Register func_id = pop();
         if (func_id.i == 1 || func_id.i == 2 || func_id.i == 3) {
@@ -307,6 +384,20 @@ void print_available_functions(FunctionMap* map) {
     printf("0. Exit\n");
 }
 
+/*
+Viene preparato uno stack aggiungendo nell'ordine:
+- i valori dei parametri della funzione
+- l'identificatore della funzione
+Durante il pop dallo stack, l'identificativo della funzione e' il primo elemento
+ad essere parsato, successivamente, se viene riconosciuto un id valito associato ad una funzione,
+viene fatto il parsing dei parametri. Per questo motivo lo stack e' riempito in questo modo:
+
+- parametro 2
+- parametro 1
+- identificativo della funzione
+
+in modo da avere un ordine di estrazione corretto.
+*/
 void create_stack(const char* func_name, FunctionMap* map) {
     for (int i = 0; i < 3; i++) {
         if (strcmp(map[i].name, func_name) == 0) {
@@ -336,8 +427,7 @@ void create_stack(const char* func_name, FunctionMap* map) {
                     push(reg);
                 }
             }
-
-            /*insert the function identifier in the stack*/
+            
             Register func_id = { .i = i+1 };
             push(func_id);
             return;

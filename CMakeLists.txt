@@ -16,5 +16,4 @@ file(GLOB_RECURSE SRC_FILES INC_FILES src/*.c include/*.h)
 add_library(StackManager STATIC ${SRC_FILES} ${INC_FILES})
 target_include_directories(StackManager PUBLIC include)
 
-add_subdirectory(clitools)
-
+add_subdirectory(test)
